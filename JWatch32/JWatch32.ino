@@ -1,3 +1,12 @@
+// I2C addresses
+
+// RTC 0x68
+// OLED 0x3C
+// BPM 0x57
+// PRESSURE 0x77
+// LIGHT 0x76
+// MPU 0x68 0x69 => AD0 HIGH
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -10,14 +19,17 @@
 #include <Adafruit_Sensor.h>
 #include "Adafruit_BMP3XX.h"
 #include <BH1750.h>
+#include <Adafruit_MPU6050.h>
 
 const char* ssid_list[] {
-  "THORGAL"
+  "THORGAL",
+  "Robotix2.4"
 };
 const int NB_WIFI = sizeof(ssid_list) / sizeof(ssid_list[0]);
 
 const char* pswd_list[] {
-  "57xwkppgkr"
+  "57xwkppgkr",
+  "FreddieLeSang"
 };
 
 const char* ap_ssid = "JWatch";
@@ -57,12 +69,14 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 3600;  // Fuseau horaire (ex: GMT+1 = 3600 sec)
 const int   daylightOffset_sec = 3600;  // Heure d'été
 
+long irValue;
 float beatsPerMinute;
 int beatAvg;
 
 #define SEALEVELPRESSURE_HPA (1013.25)
 Adafruit_BMP3XX bmp;
 BH1750 lightMeter;
+Adafruit_MPU6050 mpu;
 
 const char* menu_txt[] = {
   "Home",
@@ -70,7 +84,8 @@ const char* menu_txt[] = {
   "WiFi Client",
   "Wifi AP",
   "Sync RTC",
-  "Measures"
+  "Measures",
+  "Gyro"
 };
 const int NB_MENU = sizeof(menu_txt) / sizeof(menu_txt[0]);
 
@@ -123,16 +138,87 @@ void setup() {
   bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
   bmp.setOutputDataRate(BMP3_ODR_50_HZ);
 
-  lightMeter.begin();
+  if (!lightMeter.begin()) {
+    Serial.println("Could not find a valid BH1750 sensor, check wiring!");
+    while (1);
+  }
+
+  if (!mpu.begin(0x69)) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1);
+  }
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+    Serial.println("+-2G");
+    break;
+  case MPU6050_RANGE_4_G:
+    Serial.println("+-4G");
+    break;
+  case MPU6050_RANGE_8_G:
+    Serial.println("+-8G");
+    break;
+  case MPU6050_RANGE_16_G:
+    Serial.println("+-16G");
+    break;
+  }
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+    Serial.println("+- 250 deg/s");
+    break;
+  case MPU6050_RANGE_500_DEG:
+    Serial.println("+- 500 deg/s");
+    break;
+  case MPU6050_RANGE_1000_DEG:
+    Serial.println("+- 1000 deg/s");
+    break;
+  case MPU6050_RANGE_2000_DEG:
+    Serial.println("+- 2000 deg/s");
+    break;
+  }
+
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+    Serial.println("260 Hz");
+    break;
+  case MPU6050_BAND_184_HZ:
+    Serial.println("184 Hz");
+    break;
+  case MPU6050_BAND_94_HZ:
+    Serial.println("94 Hz");
+    break;
+  case MPU6050_BAND_44_HZ:
+    Serial.println("44 Hz");
+    break;
+  case MPU6050_BAND_21_HZ:
+    Serial.println("21 Hz");
+    break;
+  case MPU6050_BAND_10_HZ:
+    Serial.println("10 Hz");
+    break;
+  case MPU6050_BAND_5_HZ:
+    Serial.println("5 Hz");
+    break;
+  }
 
   Serial.println("JWatchOS started!");
 
   startupDisplay();
   fonctionPtr = home;
+
+  // PERFORMANCE
+  btStop();
 }
 
 void loop() {
   stateMachine();
+  adjustBrightness();
 }
 
 void stateMachine() {
@@ -172,7 +258,7 @@ void menu(bool button, int value){
         fonctionPtr = home;
         break;
       case 1:
-        fonctionPtr = bpm;
+        fonctionPtr = bpmRead;
         break;
       case 2:
         fonctionPtr = wifi_client;
@@ -187,6 +273,9 @@ void menu(bool button, int value){
         break;
       case 5:
         fonctionPtr = measures;
+        break;
+      case 6:
+        fonctionPtr = mpuRead;
         break;
       default:
         break;
@@ -280,30 +369,20 @@ void home(bool button, int value){
   strcpy(rtcbuff, "DD MM YYYY");
   display.println(now.toString(rtcbuff));
 
+  getBPM();
   display.print("BPM: ");
-
-  long ir;
-  float bpm;
-  int avg;
-
-  getBPM(ir, bpm, avg);
-  
-  display.println(avg);
+  display.println(beatAvg);
 
   display.display();
 }
 
-void bpm(bool button, int value){
+void bpmRead(bool button, int value){
   if (button){
     selectMenu();
     return;
   }
 
-  long ir;
-  float bpm;
-  int avg;
-
-  getBPM(ir, bpm, avg);
+  getBPM();
 
   display.clearDisplay();
   display.setRotation(3);
@@ -312,19 +391,18 @@ void bpm(bool button, int value){
   display.setCursor(0, 0);
 
   display.print("IR: ");
-  display.println(ir);
+  display.println(irValue);
 
   display.print("BPM: ");
-  display.println(bpm);
+  display.println(beatsPerMinute);
 
   display.print("AVG: ");
-  display.println(avg);
+  display.println(beatAvg);
 
   display.display();
 }
 
-void getBPM(long &irValue, float &beatsPerMinute, int &beatAvg){
-  beatAvg = 0;
+void getBPM(){
   irValue = particleSensor.getIR();
 
   if (checkForBeat(irValue) == true)
@@ -346,19 +424,11 @@ void getBPM(long &irValue, float &beatsPerMinute, int &beatAvg){
         beatAvg += rates[x];
       beatAvg /= RATE_SIZE;
     }
+
+    if (irValue < 50000) {
+      beatAvg = 0;
+    }
   }
-
-  // Serial.print("IR=");
-  // Serial.print(irValue);
-  // Serial.print(", BPM=");
-  // Serial.print(beatsPerMinute);
-  // Serial.print(", Avg BPM=");
-  // Serial.print(beatAvg);
-
-  // if (irValue < 50000)
-    // Serial.print(" No finger?");
-
-  // Serial.println();
 }
 
 void wifi_client(bool button, int value) {
@@ -432,7 +502,7 @@ void wifi_client(bool button, int value) {
       display.println("\nConnected!");
       display.display();
       delay(1000);
-    } else {
+    } else if (wifi_connected == value-1) {
       WiFi.disconnect();
 
       display.clearDisplay();
@@ -443,6 +513,9 @@ void wifi_client(bool button, int value) {
 
       display.println("WiFi disconnected!");
       display.display();
+
+      wifi_connected = -1;
+
       delay(1000);
       return;
     }
@@ -646,4 +719,82 @@ void getBMP(double &temp, double &press, float &alt) {
 
 void getLight(float &lux) {
   lux = lightMeter.readLightLevel();
+}
+
+void mpuRead(bool button, int value) {
+  if (button) {
+    selectMenu();
+    return;
+  }
+
+  display.clearDisplay();
+  display.setRotation(3);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  display.println("ACC:");
+  display.print("X: ");
+  display.println(a.acceleration.x);
+  display.print("Y: ");
+  display.println(a.acceleration.y);
+  display.print("Z: ");
+  display.println(a.acceleration.z);
+
+  display.println("\nGYRO:");
+  display.print("X: ");
+  display.println(g.gyro.x);
+  display.print("Y: ");
+  display.println(g.gyro.y);
+  display.print("Z: ");
+  display.println(g.gyro.z);
+
+  display.println("\nTemp: ");
+  display.print(temp.temperature);
+  display.println("oC");
+
+  display.display();
+}
+
+int currentBrightness = 128; // Valeur initiale de la luminosité
+const uint8_t brightnessStep = 35; // Pas d'incrémentation pour lisser le changement
+
+void adjustBrightness() {
+  static unsigned long lastAdjust = 0;
+
+  if (millis() - lastAdjust >= 400) {
+    float lux = lightMeter.readLightLevel(); // Lire la lumière ambiante en lux
+    
+    // Mapper la valeur de luminosité (0 à 255) en fonction de la lumière ambiante
+    lux = constrain(lux, 0, 400);
+    int targetBrightness = map(lux, 0, 400, 10, 255); // Garder targetBrightness en int
+    
+    // Ajustement progressif pour éviter des changements brusques
+    if (currentBrightness < targetBrightness) {
+        currentBrightness += brightnessStep;
+        if (currentBrightness > targetBrightness) currentBrightness = targetBrightness;
+    } else if (currentBrightness > targetBrightness) {
+        currentBrightness -= brightnessStep;
+        if (currentBrightness < targetBrightness) currentBrightness = targetBrightness;
+    }
+    
+    // Assurer que currentBrightness reste bien entre 0 et 255
+    currentBrightness = constrain(currentBrightness, 0, 255);
+    
+    // Appliquer la luminosité à l'écran (SSD1306 n'a pas de fonction de réglage direct, on peut jouer sur le contraste)
+    display.ssd1306_command(SSD1306_SETCONTRAST);
+    display.ssd1306_command(currentBrightness);
+    
+    // Serial.print("Brightness: ");
+    // Serial.print(currentBrightness);
+    // Serial.print(" LUX: ");
+    // Serial.print(lux);
+    // Serial.print(" target: ");
+    // Serial.println(targetBrightness);
+
+    lastAdjust = millis();
+  }
 }
