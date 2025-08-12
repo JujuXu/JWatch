@@ -23,13 +23,15 @@
 
 const char* ssid_list[] {
   "THORGAL",
-  "Robotix2.4"
+  "Robotix2.4",
+  "JiPhone 15"
 };
 const int NB_WIFI = sizeof(ssid_list) / sizeof(ssid_list[0]);
 
 const char* pswd_list[] {
   "57xwkppgkr",
-  "FreddieLeSang"
+  "FreddieLeSang",
+  "julien1234"
 };
 
 const char* ap_ssid = "JWatch";

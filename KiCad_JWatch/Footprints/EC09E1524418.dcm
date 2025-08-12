@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP EC09E1524418
+D Encoders 9mm 15 RES 30 DTENT
+K
+F https://ru.mouser.com/datasheet/2/15/EC09E-1370733.pdf
+$ENDCMP
+#
+#End Doc Library
