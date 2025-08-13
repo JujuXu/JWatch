@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP SN74AXC1T45DBVR
+D Single-Bit Dual-Supply Bus Transceiver
+K
+F http://www.ti.com/lit/gpn/sn74axc1t45
+$ENDCMP
+#
+#End Doc Library

@@ -4,4 +4,7 @@
   (lib (name "BH1750FVI-TR")(type "KiCad")(uri "${KIPRJMOD}/Footprints/BH1750FVI-TR.kicad_sym")(options "")(descr ""))
   (lib (name "EC09E1524418")(type "KiCad")(uri "${KIPRJMOD}/Footprints/EC09E1524418.kicad_sym")(options "")(descr ""))
   (lib (name "SLLB510200")(type "KiCad")(uri "${KIPRJMOD}/Footprints/SLLB510200.kicad_sym")(options "")(descr ""))
+  (lib (name "MAX32664GWEA+T")(type "KiCad")(uri "${KIPRJMOD}/Footprints/MAX32664GWEA+T.kicad_sym")(options "")(descr ""))
+  (lib (name "MAX30101EFD+T")(type "KiCad")(uri "${KIPRJMOD}/Footprints/MAX30101EFD+T.kicad_sym")(options "")(descr ""))
+  (lib (name "SN74AXC1T45DBVR")(type "KiCad")(uri "${KIPRJMOD}/Footprints/SN74AXC1T45DBVR.kicad_sym")(options "")(descr ""))
 )

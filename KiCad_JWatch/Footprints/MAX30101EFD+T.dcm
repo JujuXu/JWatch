@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP MAX30101EFD+T
+D Biometric Sensors Integrated Optical Sensor
+K
+F https://datasheets.maximintegrated.com/en/ds/MAX30101.pdf
+$ENDCMP
+#
+#End Doc Library
