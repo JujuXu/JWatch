@@ -45,6 +45,7 @@ uint32_t lastTouchMs;
 uint32_t touchPressMs;
 int16_t touchX_cur = -1;
 int16_t touchY_cur  = -1;
+uint8_t touchG_cur = 0;
 bool swLP = false;
 
 // WATCH GLOBAL PROPERTIES
@@ -55,9 +56,27 @@ char strVer[] = "0.1";
 // PWM Channels
 uint8_t pwmCScreen = 0;
 
+enum class Gesture : uint8_t {
+  NONE,
+  SWIPE_UP,
+  SWIPE_DOWN,
+  SWIPE_LEFT,
+  SWIPE_RIGHT,
+  LONGPRESS
+};
 
-void touch();
-void (*stateFunction)();
+struct TouchInput {
+  int16_t x = -1;           // -1 si pas de contact
+  int16_t y = -1;           // -1 si pas de contact
+  Gesture gesture = Gesture::NONE;     // cf. enum ci-dessus
+  // bool    touchDown;   // front descendant: nouveau contact détecté
+  // bool    touchUp;     // front montant: contact relâché
+  uint32_t timestamp;  // millis() du paquet
+};
+
+Gesture gestureFromString(String& s);
+void touch(struct TouchInput &out);
+void (*stateFunction)(TouchInput in);
 
 void setup(void) {
   USBSerial.begin(115200);
@@ -140,9 +159,8 @@ void startupDisplay() {
   gfx->fillScreen(BLACK);
 }
 
-void touch() {
+void touch(struct TouchInput& out) {
   uint32_t mil = millis();
-
   if (mil - touchMillis >= 20) {
     touchMillis = mil;
 
@@ -156,21 +174,24 @@ void touch() {
       int32_t y = CST816T->IIC_Read_Device_Value(
         CST816T->Arduino_IIC_Touch::Value_Information::TOUCH_COORDINATE_Y);
 
-      USBSerial.println(g);
-      USBSerial.printf("X:%d Y:%d\n",x,y);
+      if (g == "Long Press") {
+        if (swLP) {
+          g = "NONE";
+        } else {
+          swLP = true;
+        }
+      } else {
+        swLP = false;
+      }
 
-      // if (gest == Gesture::LONGPRESS) {
-      //   if (swLP) gest = Gesture::NONE;
-      //   else swLP = true;
-      // } else {
-      //   swLP = false;
-      // }
+      out.gesture = gestureFromString(g);
 
       if (x >= 0 && y >= 0) {
         touchX_cur = (int16_t)x;
         touchY_cur  = (int16_t)y;
 
         lastTouchMs = mil;
+        // USBSerial.printf("Touch X:%d Y:%d\n", touchX_cur, touchY_cur );
       }
     }
 
@@ -178,25 +199,54 @@ void touch() {
       if (touchX_cur != -1 || touchY_cur  != -1) {
         touchX_cur = -1;
         touchY_cur  = -1;
+
+        //USBSerial.printf("Touch X:%d Y:%d\n", touchX_cur, touchY_cur );
       }
     }
   }
+
+  out.x = touchX_cur;
+  out.y = touchY_cur;
+  out.timestamp = mil;
+  // USBSerial.printf("Touch X:%d Y:%d\n", touchX_cur, touchY_cur );
+}
+
+Gesture gestureFromString(String& s) {
+  s.trim();
+  s.toLowerCase();
+
+  if (s == "none")         return Gesture::NONE;
+  if (s == "swipe up")     return Gesture::SWIPE_UP;
+  if (s == "swipe down")   return Gesture::SWIPE_DOWN;
+  if (s == "swipe left")   return Gesture::SWIPE_LEFT;
+  if (s == "swipe right")  return Gesture::SWIPE_RIGHT;
+  if (s == "long press")   return Gesture::LONGPRESS;
+
+  return Gesture::NONE;
 }
 
 void stateMachine() {
-  touch();
+  TouchInput in;
+  touch(in);
+
+  // if (in.gesture != Gesture::NONE) {
+  //   USBSerial.println("yes");
+  // } else if (in.x >= 0 || in.y >= 0) {
+  //   USBSerial.printf("X:%d Y:%d\n",in.x, in.y);
+  // }
 
   if (stateFunction) {
-    stateFunction();
+    stateFunction(in);
   }
 }
 
 void switchScreen() {
   gfx->fillScreen(BLACK);
   gfx->setCursor(0, 0);
+  USBSerial.println("yes");
 }
 
-void watch() {
+void watch(struct TouchInput in) {
   static bool FIF = true;
 
   if (FIF) {
@@ -262,18 +312,16 @@ void watch() {
     }
   }
 
-  // Gesture gest = getGesture();
-
-  // if (gest != Gesture::NONE) {
-  //   FIF = true;
-  //   if (gest == Gesture::LONGPRESS) {
-  //     switchScreen();
-  //     stateFunction = selectApps;
-  //   }
-  // }
+  if (in.gesture != Gesture::NONE) {
+    FIF = true;
+    if (in.gesture == Gesture::LONGPRESS) {
+      switchScreen();
+      stateFunction = selectApps;
+    }
+  }
 }
 
-void selectApps() {
+void selectApps(struct TouchInput in) {
   static bool FIF = true;
 
   if (FIF) {
@@ -283,13 +331,12 @@ void selectApps() {
     gfx->setCursor(20, 20);
     gfx->println("App 1");
   } else {
-    // Gesture gest = getGesture();
-    // if(gest != Gesture::NONE) {
-    //   FIF = true;
-    //   if (gest == Gesture::LONGPRESS) {
-    //     switchScreen();
-    //     stateFunction = watch;
-    //   }
-    // }
+    if(in.gesture != Gesture::NONE) {
+      FIF = true;
+      if (in.gesture == Gesture::LONGPRESS) {
+        switchScreen();
+        stateFunction = watch;
+      }
+    }
   }
 }
